@@ -1,0 +1,33 @@
+{
+  "zero_optimization": {
+    "stage": 3,
+    "offload_param": {
+      "device": "cpu",
+      "pin_memory": true
+    },
+    "offload_optimizer": {
+      "device": "cpu",
+      "pin_memory": true
+    },
+    "stage3_gather_16bit_weights_on_model_save": true,
+    "memory_efficient_linear": true,
+    
+    "allgather_bucket_size": 2e8,
+    "reduce_bucket_size": 2e8,
+
+    "stage3_max_live_parameters": 3e7,
+    "stage3_prefetch_bucket_size": 3e7,
+    "stage3_param_persistence_threshold": 1e4,
+    "stage3_max_reuse_distance": 5e8
+  },
+  "train_batch_size": "auto",
+  "train_micro_batch_size_per_gpu": "auto",
+  "gradient_accumulation_steps": "auto",
+  
+  "communication_data_type": null,
+
+  "overlap_comm": false,
+
+  "gradient_clipping": 1.0,
+  "prescale_gradients": false
+}

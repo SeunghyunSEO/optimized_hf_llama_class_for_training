@@ -1,0 +1,8 @@
+*.pyc
+assets/torch_profiler_log
+scripts
+src/__pycache__
+src/models/__pycache__
+src/modules/__pycache__
+src/modules/unsloth/__pycache__
+src/modules/flash_attn/__pycache__
