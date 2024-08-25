@@ -13,6 +13,7 @@ import triton.language as tl
 
 from pdb import set_trace as Tra
 
+
 @triton.jit
 def fused_cross_entropy_fwd_bwd_kernel(
     output_loss_ptr,
@@ -98,7 +99,6 @@ class FusedCrossEntropyLossFunction(torch.autograd.Function):
         # assert n_tokens % n_loop_iters == 0, (n_tokens, n_loop_iters)
 
         NUM_WARPS = 16
-
         BLOCK_SIZE = triton.next_power_of_2(n_classes)
 
         loss = torch.empty(n_tokens, dtype=in_feat.dtype, device=in_feat.device)
@@ -129,16 +129,34 @@ class FusedCrossEntropyLossFunction(torch.autograd.Function):
 
             in_feat_chunk = in_feat_chunk.to(dtype)
 
-            # Compute logits
+            ## Compute logits
+            if in_feat_chunk.size(0) != loop_chunk_size:
+                logits_chunk_cast = logits_chunk_cast[:in_feat_chunk.size(0)]
             torch.matmul(in_feat_chunk, proj_weight_cast.T, out=logits_chunk_cast)
+
             logits_chunk = logits_chunk_cast.float()
 
-            # Compute loss
+            ## Compute loss
             loss_chunk = loss[token_start_idx:token_end_idx]
             targ_chunk = targ[token_start_idx:token_end_idx]
 
             n_tokens_chunk = logits_chunk.shape[0]
             grad_logits_chunk = logits_chunk  # NOTE: we override the logits with their gradients
+
+            # if n_tokens_chunk != loop_chunk_size:
+            #     Tra()
+            # '''
+            # (Pdb) in_feat.size(); in_feat.dtype
+            # torch.Size([308, 256])
+            # torch.float32
+
+            # (Pdb) n_tokens; loop_chunk_size; logits_chunk.dtype; in_feat_chunk.size()
+            # 308
+            # 39
+            # torch.float32
+            # torch.Size([35, 256])
+            # '''
+
             fused_cross_entropy_fwd_bwd_kernel[(n_tokens_chunk,)](
                 loss_chunk,
                 grad_logits_chunk,
@@ -199,8 +217,18 @@ class FusedCrossEntropyLossFunction(torch.autograd.Function):
 
         return grad_in_feat, grad_proj_weight, None, None, None, None
 
+def fused_cross_entropy(
+    x,
+    proj_weight,
+    targ,
+    n_loop_iters=8,
+    ignore_index=100,
+    reduction='mean',
+):
+    return FusedCrossEntropyLossFunction.apply(x, proj_weight, targ, n_loop_iters, ignore_index, reduction)
 
 class FusedProjectionPlusCrossEntropyLoss(nn.Module):
+    
     """Fused implementation of linear projection + cross entropy loss"""
 
     def __init__(

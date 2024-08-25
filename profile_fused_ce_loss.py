@@ -19,6 +19,7 @@ from src.utils import ContextManagers, get_torch_profiler
 
 from pdb import set_trace as Tra
 
+
 CLASS_SET = {
     'auto': {
         'config': LlamaConfig,
@@ -70,20 +71,30 @@ def get_model(
     config = config_class.from_pretrained(model_path)
 
     ## model
-    args = {
-        'pretrained_model_name_or_path': model_path,
-        'config': config,
-        'torch_dtype': torch_dtype,
-        'trust_remote_code': False,
-    }
-    model = model_class.from_pretrained(**args)
-    if use_deepspeed_activation_checkpointing:
-        model.model.set_deepspeed_cpu_gradient_checkpoint(num_checkpoints)
-        print(f'''
-        {model.model.use_deepspeed_cpu_gradient_checkpoint}
-        {model.model._gradient_checkpointing_func}
-        {model.model.num_checkpoints}
-        ''')
+    if class_type != 'unsloth':
+        args = {
+            'pretrained_model_name_or_path': model_path,
+            'config': config,
+            'torch_dtype': torch_dtype,
+        }
+        model = model_class.from_pretrained(**args)
+        if use_deepspeed_activation_checkpointing:
+            model.model.set_deepspeed_cpu_gradient_checkpoint(num_checkpoints)
+            print(f'''
+            {model.model.use_deepspeed_cpu_gradient_checkpoint}
+            {model.model._gradient_checkpointing_func}
+            {model.model.num_checkpoints}
+            ''')
+    else:
+        args = {
+            'model_name': model_path,
+            'max_seq_length': config.max_position_embeddings,
+            'load_in_4bit': False,
+            'dtype': torch_dtype,
+            'device_map': None,
+            'low_cpu_mem_usage': False,
+        }
+        model = model_class.from_pretrained(**args)
 
     ## tokenizer
     tokenizer = tokenizer_class.from_pretrained(model_path)

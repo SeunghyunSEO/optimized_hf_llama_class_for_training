@@ -1,5 +1,15 @@
-torch==2.2.0
+torch==2.1.0
+triton==2.1.0
+xformers
+
 transformers==4.39.0
 accelerate==0.28.0
 deepspeed==0.14.0
+trl>=0.7.8
+
 bitsandbytes
+peft>=0.7.1
+sentencepiece>=0.2.0
+protobuf<4.0.0
+datasets>=2.16.0
+pytest

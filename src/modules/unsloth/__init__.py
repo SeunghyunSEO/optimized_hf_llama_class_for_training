@@ -11,18 +11,35 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
-import warnings
-import importlib
 
-# Currently only supports 1 GPU, or else seg faults will occur.
+import warnings, importlib, sys
+from packaging.version import Version
+import os, re, subprocess, inspect
+import numpy as np
+
+# # Define a list of modules to check
+# MODULES_TO_CHECK = ["bitsandbytes"]
+
+# # Check if any of the modules in the list have been imported
+# for module in MODULES_TO_CHECK:
+#     if module in sys.modules:
+#         raise ImportError(f"Unsloth: Please import Unsloth before {module}.")
+#     pass
+# pass
+
+# Unsloth currently does not work on multi GPU setups - sadly we are a 2 brother team so
+# enabling it will require much more work, so we have to prioritize. Please understand!
+# We do have a beta version, which you can contact us about!
+# Thank you for your understanding and we appreciate it immensely!
 if "CUDA_VISIBLE_DEVICES" in os.environ:
+    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     devices = os.environ["CUDA_VISIBLE_DEVICES"]
     # Check if there are multiple cuda devices set in env
     if not devices.isdigit():
         first_id = devices.split(",")[0]
         warnings.warn(
             f"Unsloth: 'CUDA_VISIBLE_DEVICES' is currently {devices} \n"\
+            "Unsloth currently does not support multi GPU setups - but we are working on it!\n"\
             "Multiple CUDA devices detected but we require a single device.\n"\
             f"We will override CUDA_VISIBLE_DEVICES to first device: {first_id}."
         )
@@ -41,6 +58,13 @@ try:
 except:
     raise ImportError("Pytorch is not installed. Go to https://pytorch.org/.\n"\
                       "We have some installation instructions on our Github page.")
+pass
+
+# Hugging Face Hub faster downloads (only enable during Colab and Kaggle sessions)
+keynames = "\n" + "\n".join(os.environ.keys())
+if "\nCOLAB_"  in keynames or "\nKAGGLE_" in keynames:
+    os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+pass
 
 # We support Pytorch 2
 # Fixes https://github.com/unslothai/unsloth/issues/38
@@ -55,15 +79,29 @@ elif (major_torch == 2) and (minor_torch < 2):
     del os.environ["PYTORCH_CUDA_ALLOC_CONF"]
 pass
 
+# Torch 2.4 has including_emulation
+major_version, minor_version = torch.cuda.get_device_capability()
+SUPPORTS_BFLOAT16 = (major_version >= 8)
+
+old_is_bf16_supported = torch.cuda.is_bf16_supported
+if "including_emulation" in str(inspect.signature(old_is_bf16_supported)):
+    def is_bf16_supported(including_emulation = False):
+        return old_is_bf16_supported(including_emulation)
+    torch.cuda.is_bf16_supported = is_bf16_supported
+else:
+    def is_bf16_supported(): return SUPPORTS_BFLOAT16
+    torch.cuda.is_bf16_supported = is_bf16_supported
+pass
 
 # Try loading bitsandbytes and triton
 import bitsandbytes as bnb
+
 import triton
-from triton.common.build import libcuda_dirs
-import os
-import re
-import numpy as np
-import subprocess
+libcuda_dirs = lambda: None
+if Version(triton.__version__) >= Version("3.0.0"):
+    try: from triton.backends.nvidia.driver import libcuda_dirs
+    except: pass
+else: from triton.common.build import libcuda_dirs
 
 try:
     cdequantize_blockwise_fp32 = bnb.functional.lib.cdequantize_blockwise_fp32
@@ -95,8 +133,11 @@ except:
     importlib.reload(bnb)
     importlib.reload(triton)
     try:
-        import bitsandbytes as bnb
-        from triton.common.build import libcuda_dirs
+        libcuda_dirs = lambda: None
+        if Version(triton.__version__) >= Version("3.0.0"):
+            try: from triton.backends.nvidia.driver import libcuda_dirs
+            except: pass
+        else: from triton.common.build import libcuda_dirs
         cdequantize_blockwise_fp32 = bnb.functional.lib.cdequantize_blockwise_fp32
         libcuda_dirs()
     except:
@@ -114,3 +155,4 @@ from .models import *
 from .save import *
 from .chat_templates import *
 from .tokenizer_utils import *
+from .trainer import *

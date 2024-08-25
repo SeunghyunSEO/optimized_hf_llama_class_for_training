@@ -23,7 +23,7 @@ from transformers.models.llama.configuration_llama import LlamaConfig
 from ..modules.unsloth.kernels.rms_layernorm import fast_rms_layernorm
 from ..modules.unsloth.kernels.rope_embedding import fast_rope_embedding, inplace_rope_embedding
 
-from ..modules.fused_cross_entropy import FusedProjectionPlusCrossEntropyLoss
+from ..modules.fused_cross_entropy import FusedProjectionPlusCrossEntropyLoss, fused_cross_entropy
 
 logger = logging.get_logger(__name__)
 
@@ -37,31 +37,65 @@ else:
 from packaging.version import parse
 
 TORCH_MINIMUM_VERSION = parse("2.2.0")
+XFORMERS_MINIMUM_VERSION = parse("0.0.24")
 torch_version = parse(importlib_metadata.version("torch"))
+xformers_version = parse(importlib_metadata.version("xformers"))
 
-_is_torch_4_39_0 = (
+_is_torch_greather_than_2_2_0 = (
     torch_version.major,
     torch_version.minor,
     torch_version.release[-1],
-) == (
+) >= (
     TORCH_MINIMUM_VERSION.major,
     TORCH_MINIMUM_VERSION.minor,
     TORCH_MINIMUM_VERSION.release[-1],
 )
 
-assert _is_torch_4_39_0
+_is_xformers_greather_than_0_0_24 = (
+    xformers_version.major,
+    xformers_version.minor,
+    xformers_version.release[-1],
+) >= (
+    XFORMERS_MINIMUM_VERSION.major,
+    XFORMERS_MINIMUM_VERSION.minor,
+    XFORMERS_MINIMUM_VERSION.release[-1],
+)
+
+# assert _is_torch_greather_than_2_2_0 and _is_xformers_greather_than_0_0_24
+
+_torch_sdpa_OPS = {
+    'base': {"enable_math": True, "enable_flash": True, "enable_mem_efficient": True},
+    'math': {"enable_math": True, "enable_flash": False, "enable_mem_efficient": False},
+    'flash': {"enable_math": False, "enable_flash": True, "enable_mem_efficient": False},
+    'mem_efficient': {"enable_math": False, "enable_flash": False, "enable_mem_efficient": True}
+}
+
+import xformers.ops as xops
+_xformers_OPS = {
+    'base': None, 
+    'cutlass': (xops.fmha.cutlass.FwOp, xops.fmha.cutlass.BwOp),
+    'flash': (xops.fmha.flash.FwOp, xops.fmha.flash.BwOp),
+}
+_xformers_OP = _xformers_OPS['base']
+
+# USE_XFORMERS = True
+USE_XFORMERS = False
 
 import gc
 def release_memory():
     torch.cuda.empty_cache()
     gc.collect()
 
-DEBUG_BASELINE = {
+USE_BASELINE = {
+    'rope' : True,
+    'layernorm' : True,
     'attn' : False,
-    'layernorm' : False,
     'ce_loss' : False,
-    'rope' : False,
 }
+UPCASTING_LAST_HIDDEN = True
+N_LOOP_ITERS = 8
+IGNORE_INDEX = -100
+REDUCTION = 'mean'
 
 from pdb import set_trace as Tra
 
@@ -98,8 +132,11 @@ class LlamaRotaryEmbedding(nn.Module):
         freqs = torch.outer(t, self.inv_freq)
         # Different from paper, but it uses a different permutation in order to obtain the same calculation
         emb = torch.cat((freqs, freqs), dim=-1)
+
         self.register_buffer("_cos_cached", emb.cos().to(torch.get_default_dtype()), persistent=False)
         self.register_buffer("_sin_cached", emb.sin().to(torch.get_default_dtype()), persistent=False)
+        # self.register_buffer("_cos_cached", emb.cos(), persistent=False)
+        # self.register_buffer("_sin_cached", emb.sin(), persistent=False)
 
     @property
     def sin_cached(self):
@@ -252,23 +289,21 @@ class OptimizedLlamaAttention(nn.Module):
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2) # B, num_kv_heads, T, head_dim 
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2) # B, num_kv_heads, T, head_dim 
 
-        if DEBUG_BASELINE['rope']:
+        if USE_BASELINE['rope']:
             cos, sin = self.rotary_emb(value_states, position_ids)
             query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
         else:
-            kv_seq_len = key_states.shape[-2]
-            if position_ids is None:
-                cos = self.rotary_emb.cos_cached
-                sin = self.rotary_emb.sin_cached
-                query_states, key_states = fast_rope_embedding(query_states, key_states, cos, sin)
-            else:
-                cos, sin = self.rotary_emb(value_states, seq_len = kv_seq_len)
-                query_states, key_states = inplace_rope_embedding(query_states, key_states, cos, sin, position_ids)
+            if position_ids is not None:
+                logger.warning_once("position_ids is detected but will not be used to use faster kernel")
+            cos = self.rotary_emb.cos_cached
+            sin = self.rotary_emb.sin_cached
+            query_states, key_states = fast_rope_embedding(query_states, key_states, cos, sin)
+        # Tra()
 
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        if DEBUG_BASELINE['attn']:
+        if USE_BASELINE['attn']:
             attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
             if attention_mask is not None:  # no matter the length, we just slice it
                 causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
@@ -295,26 +330,40 @@ class OptimizedLlamaAttention(nn.Module):
             if attention_mask is not None:
                 causal_mask = causal_mask[:, :, :, : key_states.shape[-2]]
 
-            # SDPA with memory-efficient backend is currently (torch==2.1.2) bugged with non-contiguous inputs with custom attn_mask,
-            # Reference: https://github.com/pytorch/pytorch/issues/112577.
-            if query_states.device.type == "cuda" and causal_mask is not None:
+            if USE_XFORMERS:
+                query_states = query_states.transpose(1,2).contiguous()
+                key_states = key_states.transpose(1,2).contiguous()
+                value_states = value_states.transpose(1,2).contiguous()
+
+                attn_output = xops.memory_efficient_attention(
+                    query_states, # B, T, H, C
+                    key_states, # B, T, H, C
+                    value_states, # B, T, H, C
+                    attn_bias = attention_mask if attention_mask is not None else xops.LowerTriangularMask(), # should be B, H, T, T
+                    p=self.attention_dropout if self.training else 0.0,
+                    op=_xformers_OP,
+                ) # B, T, H, C
+                attn_output = attn_output.contiguous() # B, T, H, C
+
+            else:
+                # SDPA with memory-efficient backend is currently (torch==2.1.2) bugged with non-contiguous inputs with custom attn_mask,
+                # Reference: https://github.com/pytorch/pytorch/issues/112577.
                 query_states = query_states.contiguous()
                 key_states = key_states.contiguous()
                 value_states = value_states.contiguous()
 
-            # https://pytorch.org/docs/2.2/generated/torch.nn.functional.scaled_dot_product_attention.html#torch.nn.functional.scaled_dot_product_attention
-            attn_output = torch.nn.functional.scaled_dot_product_attention(
-                query_states, # B, H, T, C
-                key_states, # B, H, T, C
-                value_states, # B, H, T, C
-                attn_mask=causal_mask,
-                dropout_p=self.attention_dropout if self.training else 0.0,
-                is_causal=True if causal_mask is None and q_len > 1 else False,
-            )
+                # https://pytorch.org/docs/2.2/generated/torch.nn.functional.scaled_dot_product_attention.html#torch.nn.functional.scaled_dot_product_attention
+                attn_output = torch.nn.functional.scaled_dot_product_attention(
+                    query_states, # B, H, T, C
+                    key_states, # B, H, T, C
+                    value_states, # B, H, T, C
+                    attn_mask=causal_mask,
+                    dropout_p=self.attention_dropout if self.training else 0.0,
+                    is_causal=True if causal_mask is None and q_len > 1 else False,
+                ) # B, H, T, C
+                attn_output = attn_output.transpose(1, 2).contiguous() # B, T, H, C
 
-            attn_output = attn_output.transpose(1, 2).contiguous()
             attn_output = attn_output.view(bsz, q_len, self.hidden_size)
-
             attn_output = self.o_proj(attn_output)
 
         return attn_output, None, None
@@ -346,7 +395,7 @@ class OptimizedLlamaDecoderLayer(nn.Module):
 
         residual = hidden_states
 
-        if DEBUG_BASELINE['layernorm']:
+        if USE_BASELINE['layernorm']:
             hidden_states = self.input_layernorm(hidden_states)
         else:
             hidden_states = fast_rms_layernorm(self.input_layernorm, hidden_states)
@@ -363,7 +412,7 @@ class OptimizedLlamaDecoderLayer(nn.Module):
         # Fully Connected
         residual = hidden_states
 
-        if DEBUG_BASELINE['layernorm']:
+        if USE_BASELINE['layernorm']:
             hidden_states = self.post_attention_layernorm(hidden_states)
         else:
             hidden_states = fast_rms_layernorm(self.post_attention_layernorm, hidden_states)
@@ -586,10 +635,10 @@ class OptimizedLlamaModel(OptimizedLlamaPreTrainedModel):
                 if output_attentions:
                     all_self_attns += (layer_outputs[1],)
 
-        if DEBUG_BASELINE['layernorm']:
+        if USE_BASELINE['layernorm']:
             hidden_states = self.norm(hidden_states)
         else:
-            hidden_states = fast_rms_layernorm(self.norm, hidden_states, gemma=False)
+            hidden_states = fast_rms_layernorm(self.norm, hidden_states)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -618,20 +667,15 @@ class OptimizedLlamaForCausalLM(OptimizedLlamaPreTrainedModel):
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
-        self.fused_cross_entropy = FusedProjectionPlusCrossEntropyLoss(
-            # proj_weight = self.lm_head.weight.data,
-            proj_weight = self.lm_head.weight,
-            n_loop_iters = 8,
-            reduction = "mean",
-        )
-
         # Initialize weights and apply final processing
         self.post_init()
 
-        debug_info = "< Debugging kernels >\n"
-        for k, v in DEBUG_BASELINE.items():
+        debug_info = "====="*15 + "\n< Use Original Impl >\n"
+        for k, v in USE_BASELINE.items():
             debug_info += f'{k}: {v}\n'
+        debug_info += "====="*15
         print(debug_info)
+
 
     def get_input_embeddings(self):
         return self.model.embed_tokens
@@ -689,40 +733,32 @@ class OptimizedLlamaForCausalLM(OptimizedLlamaPreTrainedModel):
         
         assert labels is not None, "This model class does not support producing logits alone"
 
-        if DEBUG_BASELINE['ce_loss']:
+        if USE_BASELINE['ce_loss']:
             logits = self.lm_head(hidden_states)
-            logits = logits.float()
+            logits = logits.float() # upcasting
+
             logits = logits[:, :-1, :].contiguous().view(-1, self.config.vocab_size)
             labels = labels[:, 1:].contiguous().view(-1).to(logits.device)
             loss = CrossEntropyLoss()(logits, labels)
             release_memory()
         else:
             B, T, C = hidden_states.size()
+            if UPCASTING_LAST_HIDDEN:
+                hidden_states = hidden_states.float() # upcasting
+
             hidden_states = hidden_states[:, :-1, :].contiguous().view(-1, C)
             labels = labels[:, 1:].contiguous().view(-1).to(hidden_states.device)
             assert hidden_states.size(0) == labels.size(0)
             assert hidden_states.ndim == 2 and labels.ndim == 1
 
-            # OLD_SEQ_LEN = T-1
-            # NUM_ITERS = self.fused_cross_entropy.n_loop_iters
-            # if (OLD_SEQ_LEN) % NUM_ITERS != 0:
-            #     NEW_SEQ_LEN = ((OLD_SEQ_LEN + NUM_ITERS-1) // NUM_ITERS) * NUM_ITERS
-            #     hidden_states = torch.cat(
-            #         (
-            #             hidden_states, 
-            #             torch.zeros(NEW_SEQ_LEN - OLD_SEQ_LEN, C, device=hidden_states.device).type_as(hidden_states)
-            #         ),
-            #         dim=0
-            #     )[:OLD_SEQ_LEN, :]
-            #     labels = torch.cat(
-            #         (
-            #             labels, 
-            #             torch.zeros(NEW_SEQ_LEN - OLD_SEQ_LEN, device=labels.device)
-            #         ), 
-            #         dim=0
-            #     )[:OLD_SEQ_LEN]
-
-            loss = self.fused_cross_entropy(hidden_states, labels)
+            loss = fused_cross_entropy(
+                hidden_states, 
+                self.lm_head.weight, 
+                labels, 
+                n_loop_iters=N_LOOP_ITERS,
+                ignore_index=IGNORE_INDEX,
+                reduction=REDUCTION,
+            )
             logits = None
             release_memory()
 

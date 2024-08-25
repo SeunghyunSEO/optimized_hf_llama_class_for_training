@@ -47,9 +47,11 @@ __INT_TO_FLOAT_MAPPER = \
         "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
     ),
     "unsloth/mistral-7b-instruct-v0.1-bnb-4bit" : (
+        "unsloth/mistral-7b-instruct-v0.1",
         "mistralai/Mistral-7B-Instruct-v0.1",
     ),
     "unsloth/mistral-7b-instruct-v0.2-bnb-4bit" : (
+        "unsloth/mistral-7b-instruct-v0.2",
         "mistralai/Mistral-7B-Instruct-v0.2",
     ),
     "unsloth/llama-2-7b-chat-bnb-4bit" : (
@@ -144,15 +146,139 @@ __INT_TO_FLOAT_MAPPER = \
         "unsloth/Phi-3-mini-4k-instruct",
         "microsoft/Phi-3-mini-4k-instruct",
     ),
+    "unsloth/mistral-7b-v0.3-bnb-4bit" : (
+        "unsloth/mistral-7b-v0.3",
+        "mistralai/Mistral-7B-v0.3",
+    ),
+    "unsloth/mistral-7b-instruct-v0.3-bnb-4bit" : (
+        "unsloth/mistral-7b-instruct-v0.3",
+        "mistralai/Mistral-7B-Instruct-v0.3",
+    ),
+    "unsloth/Phi-3-medium-4k-instruct-bnb-4bit" : (
+        "unsloth/Phi-3-medium-4k-instruct",
+        "microsoft/Phi-3-medium-4k-instruct",
+    ),
+    "unsloth/Qwen2-0.5B-bnb-4bit" : (
+        "unsloth/Qwen2-0.5B",
+        "Qwen/Qwen2-0.5B",
+    ),
+    "unsloth/Qwen2-0.5B-Instruct-bnb-4bit" : (
+        "unsloth/Qwen2-0.5B-Instruct",
+        "Qwen/Qwen2-0.5B-Instruct",
+    ),
+    "unsloth/Qwen2-1.5B-bnb-4bit" : (
+        "unsloth/Qwen2-1.5B",
+        "Qwen/Qwen2-1.5B",
+    ),
+    "unsloth/Qwen2-1.5B-Instruct-bnb-4bit" : (
+        "unsloth/Qwen2-1.5B-Instruct",
+        "Qwen/Qwen2-1.5B-Instruct",
+    ),
+    "unsloth/Qwen2-7B-bnb-4bit" : (
+        "unsloth/Qwen2-7B",
+        "Qwen/Qwen2-7B",
+    ),
+    "unsloth/Qwen2-7B-Instruct-bnb-4bit" : (
+        "unsloth/Qwen2-7B-Instruct",
+        "Qwen/Qwen2-7B-Instruct",
+    ),
+    "unsloth/Qwen2-70B-bnb-4bit" : (
+        "Qwen/Qwen2-70B",
+    ),
+    "unsloth/Qwen2-70B-Instruct-bnb-4bit" : (
+        "Qwen/Qwen2-70B-Instruct",
+    ),
+    "mistralai/Codestral-22B-v0.1" : (
+        "mistral-community/Codestral-22B-v0.1",
+    ),
+    "unsloth/gemma-2-9b-bnb-4bit" : (
+        "unsloth/gemma-2-9b",
+        "google/gemma-2-9b",
+    ),
+    "unsloth/gemma-2-27b-bnb-4bit" : (
+        "unsloth/gemma-2-27b",
+        "google/gemma-2-27b",
+    ),
+    "unsloth/gemma-2-9b-it-bnb-4bit" : (
+        "unsloth/gemma-2-9b-it",
+        "google/gemma-2-9b-it",
+    ),
+    "unsloth/gemma-2-27b-it-bnb-4bit" : (
+        "unsloth/gemma-2-27b-it",
+        "google/gemma-2-27b-it",
+    ),
+    "unsloth/Phi-3-mini-4k-instruct-v0-bnb-4bit" : ( # Old Phi pre July
+        "unsloth/Phi-3-mini-4k-instruct-v0",
+    ),
+    "unsloth/Mistral-Nemo-Instruct-2407-bnb-4bit" : ( # New 12b Mistral models
+        "unsloth/Mistral-Nemo-Instruct-2407",
+        "mistralai/Mistral-Nemo-Instruct-2407",
+    ),
+    "unsloth/Mistral-Nemo-Base-2407-bnb-4bit" : ( # New 12b Mistral models
+        "unsloth/Mistral-Nemo-Base-2407",
+        "mistralai/Mistral-Nemo-Base-2407",
+    ),
+    "unsloth/Meta-Llama-3.1-8B-bnb-4bit" : (
+        "unsloth/Meta-Llama-3.1-8B",
+        "meta-llama/Meta-Llama-3.1-8B",
+    ),
+    "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit" : (
+        "unsloth/Meta-Llama-3.1-8B-Instruct",
+        "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    ),
+    "unsloth/Meta-Llama-3.1-70B-bnb-4bit" : (
+        "meta-llama/Meta-Llama-3.1-70B",
+    ),
+    "unsloth/Meta-Llama-3.1-405B-bnb-4bit" : (
+        "meta-llama/Meta-Llama-3.1-405B",
+    ),
+    "unsloth/Meta-Llama-3.1-405B-Instruct-bnb-4bit" : (
+        "meta-llama/Meta-Llama-3.1-405B-Instruct",
+    ),
+    "unsloth/Meta-Llama-3.1-70B-Instruct-bnb-4bit" : (
+        "meta-llama/Meta-Llama-3.1-70B-Instruct",
+    ),
+    "unsloth/Mistral-Large-Instruct-2407-bnb-4bit" : (
+        "mistralai/Mistral-Large-Instruct-2407",
+    ),
+    "unsloth/gemma-2-2b-bnb-4bit" : (
+        "unsloth/gemma-2-2b",
+        "google/gemma-2-2b",
+    ),
+    "unsloth/gemma-2-2b-it-bnb-4bit" : (
+        "unsloth/gemma-2-2b-it",
+        "google/gemma-2-2b-it",
+    ),
+    "unsloth/Phi-3.5-mini-instruct-bnb-4bit" : (
+        "unsloth/Phi-3.5-mini-instruct",
+        "microsoft/Phi-3.5-mini-instruct",
+    ),
 }
 
-INT_TO_FLOAT_MAPPER = {}
-FLOAT_TO_INT_MAPPER = {}
+INT_TO_FLOAT_MAPPER  = {}
+FLOAT_TO_INT_MAPPER  = {}
+MAP_TO_UNSLOTH_16bit = {}
 
 for key, values in __INT_TO_FLOAT_MAPPER.items():
     INT_TO_FLOAT_MAPPER[key] = values[0]
 
     for value in values:
         FLOAT_TO_INT_MAPPER[value] = key
+    pass
+
+    # Map to Unsloth version for 16bit versions
+    if len(values) == 2:
+        if values[0].startswith("unsloth"):
+            MAP_TO_UNSLOTH_16bit[values[1]] = values[0]
+            MAP_TO_UNSLOTH_16bit[values[1].lower()] = values[0]
+        pass
+    pass
+
+    # Get lowercased
+    lowered_key = key.lower()
+    INT_TO_FLOAT_MAPPER[lowered_key] = values[0].lower()
+
+    for value in values:
+        FLOAT_TO_INT_MAPPER[value.lower()] = lowered_key
     pass
 pass
