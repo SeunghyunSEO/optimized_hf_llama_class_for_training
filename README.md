@@ -64,7 +64,15 @@ It follows below procedure to compute loss.
 
 ## 6. Fused RoPE, LayerNorm, MLP and so on
 
-adapted from unsloth
+Using `Fused Kernel` means implement multiple operations in once at GPU’s SRAM.
+It usually saves times by reducing the number of data movements (from DRAM to SRAM and SRAM to DRAM) and so on.
+Check [Triton](https://triton-lang.org/main/getting-started/tutorials/02-fused-softmax.html#sphx-glr-getting-started-tutorials-02-fused-softmax-py) for more details.
+
+![fused_softmax_fig1](./assets/images/fused_softmax_fig1.png)
+
+![fused_softmax_fig2](./assets/images/fused_softmax_fig2.png)
+
+In this project, kernels are adapted from unsloth and torchtitan
 
 
 # Profiling

@@ -1,3 +1,7 @@
+'''
+copied from https://github.com/pytorch/torchtitan/blob/main/torchtitan/models/norms.py
+'''
+
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 #
