@@ -68,21 +68,20 @@ adapted from unsloth
 
 
 # Profiling
-
 ## Installation
 
 ```
 # create new venv
-VENV_DIR=/mnt/chatbot30TB/shseo/venv
-VENV_NAME=triton
+VENV_DIR=/path/to/venv
+VENV_NAME=tmp
 python -m pip install --upgrade pip
 pip install virtualenv
 python -m virtualenv -p python3 $VENV_DIR/$VENV_NAME
 ```
 
 ```
-VENV_DIR=/mnt/chatbot30TB/shseo/venv
-VENV_NAME=triton
+VENV_DIR=/path/to/venv
+VENV_NAME=tmp
 source $VENV_DIR/$VENV_NAME/bin/activate
 ```
 
