@@ -91,6 +91,10 @@ USE_BASELINE = {
     'attn' : False,
     'ce_loss' : False,
 }
+UPCASTING_LAST_HIDDEN = True
+N_LOOP_ITERS = 8
+IGNORE_INDEX = -100
+REDUCTION = 'mean'
 
 # UPCASTING_LAST_HIDDEN = False
 UPCASTING_LAST_HIDDEN = True

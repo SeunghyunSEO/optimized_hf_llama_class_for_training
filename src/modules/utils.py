@@ -16,6 +16,30 @@ import triton
 MAX_FUSED_SIZE = 65536
 next_power_of_2 = triton.next_power_of_2
 
+# torch.cuda.amp.custom_fwd is deprecated >= 2.4
+import torch
+from packaging.version import Version
+if Version(torch.__version__) < Version("2.4.0"):
+    torch_amp_custom_fwd = torch.cuda.amp.custom_fwd
+    torch_amp_custom_bwd = torch.cuda.amp.custom_bwd
+else:
+    torch_amp_custom_fwd = torch.amp.custom_fwd(device_type = "cuda")
+    torch_amp_custom_bwd = torch.amp.custom_bwd(device_type = "cuda")
+pass
+
+
+# tl.math.tanh now is libdevice.tanh
+from packaging.version import Version
+import triton
+if Version(triton.__version__) >= Version("3.0.0"):
+    from triton.language.extra import libdevice
+    triton_tanh = libdevice.tanh
+else:
+    import triton.language as tl
+    triton_tanh = tl.math.tanh
+pass
+
+
 def calculate_settings(n):
     BLOCK_SIZE = next_power_of_2(n)
     if BLOCK_SIZE > MAX_FUSED_SIZE:
@@ -32,7 +56,6 @@ pass
 import bitsandbytes as bnb
 get_ptr = bnb.functional.get_ptr
 import ctypes
-import torch
 cdequantize_blockwise_fp32      = bnb.functional.lib.cdequantize_blockwise_fp32
 cdequantize_blockwise_fp16_nf4  = bnb.functional.lib.cdequantize_blockwise_fp16_nf4
 cdequantize_blockwise_bf16_nf4  = bnb.functional.lib.cdequantize_blockwise_bf16_nf4
@@ -63,6 +86,25 @@ def get_lora_parameters(proj):
 pass
 
 
+def get_lora_parameters_bias(proj):
+    # For DPO or disabled adapters
+    base_layer = (proj.base_layer if hasattr(proj, "base_layer") else proj)
+    W = base_layer.weight
+    bias = base_layer.bias
+
+    if not hasattr(proj, "disable_adapters") or proj.disable_adapters or proj.merged:
+        return W, QUANT_STATE(W), None, None, None, bias
+    pass
+
+    active_adapter = proj.active_adapters[0] if \
+        hasattr(proj, "active_adapters") else proj.active_adapter
+    A = proj.lora_A [active_adapter].weight
+    B = proj.lora_B [active_adapter].weight
+    s = proj.scaling[active_adapter]
+    return W, QUANT_STATE(W), A, B, s, bias
+pass
+
+
 def fast_dequantize(W, quant_state = None, out = None):
     if quant_state is None: return W
     if type(quant_state) is not list:
@@ -86,14 +128,14 @@ def fast_dequantize(W, quant_state = None, out = None):
 
     # Create weight matrix
     if out is None:
-        out = torch.empty(shape, dtype = dtype, device = "cuda")
+        out = torch.empty(shape, dtype = dtype, device = "cuda:0")
     else:
         assert(out.shape == shape)
         assert(out.dtype == dtype)
 
     # NF4 dequantization of statistics
     n_elements_absmax = absmax.numel()
-    out_absmax = torch.empty(n_elements_absmax, dtype = torch.float32, device = "cuda")
+    out_absmax = torch.empty(n_elements_absmax, dtype = torch.float32, device = "cuda:0")
 
     # Do dequantization
     ptr_out_absmax = get_ptr(out_absmax)
@@ -142,7 +184,7 @@ def fast_gemv(X, W, quant_state, out = None):
     bout = shape[0]
 
     if out is None:
-        out = torch.empty((1, 1, bout,), dtype = dtype, device = "cuda")
+        out = torch.empty((1, 1, bout,), dtype = dtype, device = "cuda:0")
     # else:
     #     assert(out.shape == (1, 1, bout,))
     # pass
@@ -160,7 +202,7 @@ def fast_gemv(X, W, quant_state, out = None):
     ldb = ctypes.c_int32(ldb)
     ldc = ctypes.c_int32(ldc)
 
-    df = torch.empty(absmax.shape, dtype = torch.float32, device = "cuda")
+    df = torch.empty(absmax.shape, dtype = torch.float32, device = "cuda:0")
     cdequantize_blockwise_fp32(
         get_ptr(code2), get_ptr(absmax), get_ptr(absmax2), get_ptr(df),
         ctypes.c_int(blocksize2), ctypes.c_int(df.numel()),
@@ -181,7 +223,7 @@ pass
 
 def fast_linear_forward(proj, X, temp_lora = None, out = None):
 
-    W, W_quant, lora_A, lora_B, lora_S = get_lora_parameters(proj)
+    W, W_quant, lora_A, lora_B, lora_S, bias = get_lora_parameters_bias(proj)
     bsz, q_len, in_dim = X.shape
     if q_len != 1: return matmul_lora(X, W, W_quant, lora_A, lora_B, lora_S)
 
@@ -215,6 +257,8 @@ def fast_linear_forward(proj, X, temp_lora = None, out = None):
         pass
         out = out.view(bsz, 1, out_dim)
     pass
+
+    if bias is not None: out += bias
 
     return out
 pass
