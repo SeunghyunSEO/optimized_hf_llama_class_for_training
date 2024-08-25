@@ -64,11 +64,30 @@ It follows below procedure to compute loss.
 
 ## 6. Fused RoPE, LayerNorm, MLP and so on
 
+adapted from unsloth
 
 
 # Profiling
 
-## Allclose test
+## Installation
+
+```
+# create new venv
+VENV_DIR=/path/to/venv
+VENV_NAME=tmp
+python -m pip install --upgrade pip
+pip install virtualenv
+python -m virtualenv -p python3 $VENV_DIR/$VENV_NAME
+```
+
+```
+VENV_DIR=/path/to/venv
+VENV_NAME=tmp
+source $VENV_DIR/$VENV_NAME/bin/activate
+cd /path/to/dir && pip install -r requirements 
+```
+
+## Sanity Check
 
 ```bash
 # pip install -r requirements.txt
@@ -161,18 +180,27 @@ torch.allclose(weight_grad, weight_grad_, rtol=rtol, atol=atol): True
 
 ## Profiling with distributed setting
 
+```
+WORLD_SIZE=?
+MACHINE_GPU_COUNT=?
+MASTER_ADDR=?
+MASTER_PORT=?
+MACHINE_RANK=?
+```
+
 ```bash
-DS_CONFIG_PATH="ds_configs/ds_config_zero3_cpu.json"
-DISTRIBUTED_ARGS="--num_processes $(($MACHINE_GPU_COUNT*$WORLD_SIZE)) --num_machines $WORLD_SIZE --main_process_ip $MASTER_ADDR --main_process_port $MASTER_PORT --machine_rank $MACHINE_RANK"
+# MODEL_PATH="meta-llama/Meta-Llama-3-8B"
 
-MODEL_PATH="meta-llama/Meta-Llama-3-8B"
-CLASS_TYPE="optimized"
+# CLASS_TYPE="auto"
+CLASS_TYPE="custom_optimized"
+
 DTYPE="bf16"
-
 BATCH_SIZE=1
 SEQ_LEN=32768
-
 NUM_CHECKPOINTS=1
+
+DS_CONFIG_PATH="ds_configs/ds_config_zero3_cpu.json"
+DISTRIBUTED_ARGS="--num_processes $(($MACHINE_GPU_COUNT*$WORLD_SIZE)) --num_machines $WORLD_SIZE --main_process_ip $MASTER_ADDR --main_process_port $MASTER_PORT --machine_rank $MACHINE_RANK"
 
 accelerate launch $DISTRIBUTED_ARGS \
 --use_deepspeed \
@@ -212,6 +240,69 @@ accelerate launch $DISTRIBUTED_ARGS \
 - `[B, T] = [4, 20480]` input size
 
 ![2gpu_82k_fused](./assets/profiling_result_images/2gpu_82k_fused.png)
+
+
+# OG vs Malek's vs Liger (Aug 25th, 2024)
+
+- 2x 80GB A100
+- max seq_len: 8192
+- zero3 with cpu offload
+- grad ckpt
+- vanilla vs malek vs liger (only fused ce is activated)
+
+![fused_ce_comparison](./assets/fused_ce_convergence_test_result_images/fused_ce_comparison.png)
+
+## Script
+
+```
+WORLD_SIZE=?
+MACHINE_GPU_COUNT=?
+MASTER_ADDR=?
+MASTER_PORT=?
+MACHINE_RANK=?
+```
+
+```bash
+# MODEL_PATH="meta-llama/Meta-Llama-3-8B"
+CLASS_TYPE="custom_optimized"
+MAX_INPUT_LENGTH=8192
+PER_DEVICE_TRAIN_BATCH_SIZE=1
+GRAD_ACCUM=2
+
+# DS_CONFIG_PATH="ds_configs/ds_config_zero3.json"
+DS_CONFIG_PATH="ds_configs/ds_config_zero3_cpu.json"
+DISTRIBUTED_ARGS="--num_processes $(($MACHINE_GPU_COUNT*$WORLD_SIZE)) --num_machines $WORLD_SIZE --main_process_ip $MASTER_ADDR --main_process_port $MASTER_PORT --machine_rank $MACHINE_RANK"
+echo $DISTRIBUTED_ARGS
+accelerate launch $DISTRIBUTED_ARGS train.py \
+--class_type $CLASS_TYPE \
+--model_path $MODEL_PATH \
+--max_input_length $MAX_INPUT_LENGTH \
+--per_device_train_batch_size $PER_DEVICE_TRAIN_BATCH_SIZE \
+--gradient_accumulation_steps $GRAD_ACCUM \
+--use_grad_ckpt \
+--ds_config $DS_CONFIG_PATH
+```
+
+## for Liger
+
+first, intall [Liger](https://github.com/linkedin/Liger-Kernel/tree/main?tab=readme-ov-file#installation) and then set `CLASS_TYPE=liger`
+
+```bash
+pip install liger-kernel 
+```
+
+```bash
+CLASS_TYPE="liger"
+echo $DISTRIBUTED_ARGS
+accelerate launch $DISTRIBUTED_ARGS train.py \
+--class_type $CLASS_TYPE \
+--model_path $MODEL_PATH \
+--dtype $DTYPE \
+--max_input_length $MAX_INPUT_LENGTH \
+--per_device_train_batch_size $PER_DEVICE_TRAIN_BATCH_SIZE \
+--use_grad_ckpt \
+--ds_config $DS_CONFIG_PATH
+```
 
 
 # References

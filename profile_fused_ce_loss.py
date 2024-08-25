@@ -10,32 +10,13 @@ import torch
 from accelerate import Accelerator
 from accelerate.utils import InitProcessGroupKwargs
 
-from transformers import LlamaConfig, AutoTokenizer
+from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM
 from src.models.modeling_llama import LlamaForCausalLM
 from src.models.optimized_modeling_llama import OptimizedLlamaForCausalLM
-from src.modules.unsloth.models import FastLanguageModel
 
 from src.utils import ContextManagers, get_torch_profiler
 
 from pdb import set_trace as Tra
-
-CLASS_SET = {
-    'auto': {
-        'config': LlamaConfig,
-        'model': LlamaForCausalLM,
-        'tokenizer': AutoTokenizer,
-    },
-    'optimized': {
-        'config': LlamaConfig,
-        'model': OptimizedLlamaForCausalLM,
-        'tokenizer': AutoTokenizer,
-    },
-    'unsloth': {
-        'config': LlamaConfig,
-        'model': FastLanguageModel,
-        'tokenizer': AutoTokenizer,
-    },
-}
 
 DTYPE_SET = {
     "fp32" : torch.float32,
@@ -60,33 +41,49 @@ def get_model(
     num_checkpoints: int = 1,
 ):
     torch_dtype = DTYPE_SET[dtype]
-    class_set = CLASS_SET[class_type]
+    model_class = OptimizedLlamaForCausalLM if class_type == 'custom_optimized' else AutoModelForCausalLM
+    config = AutoConfig.from_pretrained(model_path)
 
-    config_class = class_set['config']
-    model_class = class_set['model']
-    tokenizer_class = class_set['tokenizer']
+    if class_type != 'unsloth':
+        args = {
+            'pretrained_model_name_or_path': model_path,
+            'config': config,
+            'torch_dtype': torch_dtype,
+        }
+        model = model_class.from_pretrained(**args)
+        if class_type == 'liger':
+            from liger_kernel.transformers import apply_liger_kernel_to_llama
+            liger_args = {
+                'rope': False,
+                'cross_entropy': False,
+                'rms_norm': False,
+                'swiglu': False,
+                'fused_linear_cross_entropy': True,
+            }
+            apply_liger_kernel_to_llama(**liger_args)
 
-    ## configuration
-    config = config_class.from_pretrained(model_path)
+        if class_type == 'custom_optimized' and use_deepspeed_activation_checkpointing:
+            model.model.set_deepspeed_cpu_gradient_checkpoint(num_checkpoints)
+            print(f'''
+            {model.model.use_deepspeed_cpu_gradient_checkpoint}
+            {model.model._gradient_checkpointing_func}
+            {model.model.num_checkpoints}
+            ''')
 
-    ## model
-    args = {
-        'pretrained_model_name_or_path': model_path,
-        'config': config,
-        'torch_dtype': torch_dtype,
-        'trust_remote_code': False,
-    }
-    model = model_class.from_pretrained(**args)
-    if use_deepspeed_activation_checkpointing:
-        model.model.set_deepspeed_cpu_gradient_checkpoint(num_checkpoints)
-        print(f'''
-        {model.model.use_deepspeed_cpu_gradient_checkpoint}
-        {model.model._gradient_checkpointing_func}
-        {model.model.num_checkpoints}
-        ''')
+    else:
+        args = {
+            'model_name': model_path,
+            'max_seq_length': config.max_position_embeddings,
+            'load_in_4bit': False,
+            'dtype': torch_dtype,
+            'device_map': None,
+            'low_cpu_mem_usage': False,
+        }
+        from unsloth import FastLanguageModel 
+        model = FastLanguageModel.from_pretrained(**args)
 
     ## tokenizer
-    tokenizer = tokenizer_class.from_pretrained(model_path)
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
 
     print(f'''
     config: {config}
@@ -151,9 +148,11 @@ def main(args):
     ds_config["wall_clock_breakdown"] = True # Enable timing of the latency of forward/backward/update training phases
     ds_config["dump_state"] = False # Print out state information of DeepSpeed object after initialization
     if args.dtype == "bf16":
+        ds_config["fp16"] = {'enabled': False}
         ds_config["bf16"] = {'enabled': True}
     elif args.dtype == "fp16":
-        ds_config["bf16"] = {'enabled': True}
+        ds_config["fp16"] = {'enabled': True}
+        ds_config["bf16"] = {'enabled': False}
     else:
         raise NotImplementedError
     accelerator.state.deepspeed_plugin.deepspeed_config = ds_config
@@ -217,8 +216,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--class_type", 
         type=str,
-        default="optimized",
-        choices=["auto", "optimized", "unsloth"]
+        default="custom_optimized",
+        choices=["auto", "custom_optimized", "unsloth", "liger"]
     )
     parser.add_argument(
         "--dtype", 

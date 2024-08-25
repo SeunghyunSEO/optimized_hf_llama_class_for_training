@@ -63,8 +63,8 @@ def get_output(
 device = "cuda:0"
 
 # dtype = torch.float16
-# dtype = torch.bfloat16
-dtype = torch.float32
+dtype = torch.bfloat16
+# dtype = torch.float32
 
 seed = 1234
 batch_size = 2
@@ -106,9 +106,9 @@ assert (len(vanilla_model_outputs[1].keys()) == len(optimized_model_outputs[1].k
 
 print(f'''
 < loss >
-vanilla_model_outputs[0]   : {vanilla_model_outputs[0]:.60f}
-optimized_model_outputs[0] : {optimized_model_outputs[0]:.60f}
-allclose : {torch.allclose(vanilla_model_outputs[0], optimized_model_outputs[0])}
+vanilla_model_outputs[0]   : {vanilla_model_outputs[0].float():.60f}
+optimized_model_outputs[0] : {optimized_model_outputs[0].float():.60f}
+allclose : {torch.allclose(vanilla_model_outputs[0].float(), optimized_model_outputs[0].float())}
 ''')
 
 for key, grad, grad_ in zip(vanilla_model_outputs[1].keys(), vanilla_model_outputs[1].values(), optimized_model_outputs[1].values()):
