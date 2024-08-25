@@ -243,7 +243,7 @@ accelerate launch $DISTRIBUTED_ARGS \
 ![2gpu_82k_fused](./assets/profiling_result_images/2gpu_82k_fused.png)
 
 
-# OG vs Malek's vs Liger (Aug 25th, 2024)
+# Fused CE Comparison (OG vs Malek's vs Liger)
 
 - 2x 80GB A100
 - max seq_len: 8192
