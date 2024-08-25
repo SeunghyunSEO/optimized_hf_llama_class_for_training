@@ -12,45 +12,53 @@ Recently, bunch of awesome optimization techniques or kernels for training Large
 - [ ] Memory Efficient Cross Entropy (CE) loss kernel
 - [ ] Fused RoPE, LayerNorm, MLP and so on
 
-(This repository will not cover Parameter Efficient Fine-Tuning (PEFT) methods such as QLoRA or 4-bit quantized training)
+This project provides monkey patched llama class for the appetizer of LLMs with larger vocab and long context inputs. 
+(i dont cover Parameter Efficient Fine-Tuning (PEFT) methods such as QLoRA or 4-bit quantized training)
+
 
 ## 1. Efficient SDPA
 
-Efficient attention reduce both space and time complexity by fusing kernels and implementing cumulative attention (tiled softmax).
-The self attention block does not requires O(n^2) anymore, but LLM still need bunch of memories for full fine-tuning.
+Efficient attention reduce both space and time complexity by fusing kernels and implementing cumulative attention (online softmax).
+Thanks to the memory efficient attenntions, self attention block does not requires O(n^2) anymore but LLM still need bunch of memories for full fine-tuning.
 
 ![before_xformers](./assets/images/before_xformers.jpg)
 
 ![xformers_chunk](./assets/images/xformers_chunk.gif)
 
-And flash attention improve this mechanism even further leveraging A100 GPU's memory hierarchy.
+[Flash attention](https://github.com/Dao-AILab/flash-attention) improve this mechanism even further leveraging A100 GPU's memory hierarchy.
 
 ![flash_attn_v1_paper_fig1](./assets/images/flash_attn_v1_paper_fig1.png)
 
+
 ## 2. FSDP or ZeRO
 
-FSDP or ZeRO removes redundancy for distributed training by partitioning optimizer, gradients and parameters into each devices.
+FSDP or ZeRO is designe to remove the redundancy for distributed training by partitioning optimizer, gradients and parameters into each devices.
 Especially ZeRO-3 achieve significant memory reduction but it scarifies training wall clock time because of comunication (1.5 times slower).
-But from a memory perspective, it's still not enough.
+But from a memory perspective, it's still not enough for long context and larger vocabulary. 
 
 ![zero_paper_fig1_1](./assets/images/zero_paper_fig1_1.png)
 
 You can reduce memory extremely by offloading partitioned parameters, optimizer states and gradients to CPU 
 
+
 ## 3. Activation Checkpointing
 
 Activation checkpointing (also known as gradient checkpointing) also can reduce memory significantly by sacrificing training wall clock time.
-it save NN layer's activations selectively in forward path, and re-compute intermediate activations for back-propagation.
+it save Neural Network (NN) layer's activations selectively in forward path, and re-compute intermediate activations for back-propagation.
 (Basically, activation memory of transformer-based models is proportional to the number of `hidden_dim * batch * seq_len * n_layers` (For GPT-2 like model, it consumes `12 * hidden_dim * batch * seq_len * n_layers`))
 
 ![checkpointed_backprop](./assets/images/checkpointed_backprop.png)
 
 ![checkpointed_backprop](./assets/images/checkpointed_backprop.gif)
 
+(animation credit: [cybertronai/gradient-checkpointing](https://github.com/Dao-AILab/flash-attention))
+
+
 ## 4. Offloading Activation checkpointing
 
-Activation checkpointing can be optimized more by offloading activations to CPU and less frequently.
+Activation checkpointing can be optimized more by offloading activations to CPU and less frequently (selective checkpointing).
 But memory copy between CPU and GPU can dominate training wall clock time when input tensor size is small. 
+
 
 ## 5. Memory Efficient Cross Entropy (CE) loss kernel
 
@@ -198,7 +206,7 @@ MACHINE_RANK=?
 ```
 
 ```bash
-# MODEL_PATH="meta-llama/Meta-Llama-3-8B"
+MODEL_PATH="meta-llama/Meta-Llama-3-8B"
 
 # CLASS_TYPE="auto"
 CLASS_TYPE="custom_optimized"
@@ -251,7 +259,7 @@ accelerate launch $DISTRIBUTED_ARGS \
 ![2gpu_82k_fused](./assets/profiling_result_images/2gpu_82k_fused.png)
 
 
-# Fused CE Comparison (OG vs Malek's vs Liger)
+## Fused CE Comparison (OG vs Malek's vs Liger)
 
 - 2x 80GB A100
 - max seq_len: 8192
@@ -260,8 +268,6 @@ accelerate launch $DISTRIBUTED_ARGS \
 - vanilla vs malek vs liger (only fused ce is activated)
 
 ![fused_ce_comparison](./assets/fused_ce_convergence_test_result_images/fused_ce_comparison.png)
-
-## Script
 
 ```
 WORLD_SIZE=?
@@ -272,7 +278,7 @@ MACHINE_RANK=?
 ```
 
 ```bash
-# MODEL_PATH="meta-llama/Meta-Llama-3-8B"
+MODEL_PATH="meta-llama/Meta-Llama-3-8B"
 CLASS_TYPE="custom_optimized"
 MAX_INPUT_LENGTH=8192
 PER_DEVICE_TRAIN_BATCH_SIZE=1
@@ -292,7 +298,7 @@ accelerate launch $DISTRIBUTED_ARGS train.py \
 --ds_config $DS_CONFIG_PATH
 ```
 
-## for Liger
+### for Liger
 
 first, intall [Liger](https://github.com/linkedin/Liger-Kernel/tree/main?tab=readme-ov-file#installation) and then set `CLASS_TYPE=liger`
 
@@ -321,3 +327,4 @@ accelerate launch $DISTRIBUTED_ARGS train.py \
 - [Triton kernels from Unsloth AI](https://github.com/unslothai/unsloth/tree/main/unsloth/kernels)
 - [Memory-Efficient Cross Entropy Loss from (mgmalek/efficient_cross_entropy)](https://github.com/mgmalek/efficient_cross_entropy)
 - [Some modules from (mosaicml/llm-foundry)](https://github.com/mosaicml/llm-foundry/tree/main/llmfoundry/models)
+- [Liger-Kernel](https://github.com/linkedin/Liger-Kernel/tree/main)
