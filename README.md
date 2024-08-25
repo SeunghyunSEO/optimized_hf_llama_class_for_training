@@ -259,7 +259,7 @@ accelerate launch $DISTRIBUTED_ARGS \
 ![2gpu_82k_fused](./assets/profiling_result_images/2gpu_82k_fused.png)
 
 
-## Fused CE Comparison (OG vs Malek's vs Liger)
+## Fused CE Comparison (OG vs Malek's vs Liger) with Distributed Setting
 
 - 2x 80GB A100
 - max seq_len: 8192
@@ -312,11 +312,47 @@ echo $DISTRIBUTED_ARGS
 accelerate launch $DISTRIBUTED_ARGS train.py \
 --class_type $CLASS_TYPE \
 --model_path $MODEL_PATH \
---dtype $DTYPE \
 --max_input_length $MAX_INPUT_LENGTH \
 --per_device_train_batch_size $PER_DEVICE_TRAIN_BATCH_SIZE \
+--gradient_accumulation_steps $GRAD_ACCUM \
 --use_grad_ckpt \
 --ds_config $DS_CONFIG_PATH
+```
+
+
+### using FSDP
+
+- ref
+  - [fsdp doc](https://pytorch.org/docs/stable/fsdp.html)
+  - [hf training args](https://github.com/huggingface/transformers/blob/bdf36dcd48106a4a0278ed7f3cc26cd65ab7b066/src/transformers/training_args.py#L473-L498)
+  - [hf accelerate doc](https://github.com/huggingface/accelerate/blob/main/docs/source/usage_guides/fsdp.md)
+  - [liger example](https://github.com/linkedin/Liger-Kernel/tree/main/examples/huggingface)
+
+```
+WORLD_SIZE=?
+MACHINE_GPU_COUNT=?
+MASTER_ADDR=?
+MASTER_PORT=?
+MACHINE_RANK=?
+```
+
+```bash
+MODEL_PATH="meta-llama/Meta-Llama-3-8B"
+CLASS_TYPE="custom_optimized"
+# CLASS_TYPE="liger"
+MAX_INPUT_LENGTH=8192
+PER_DEVICE_TRAIN_BATCH_SIZE=1
+GRAD_ACCUM=2
+
+torchrun --nnodes=$WORLD_SIZE --nproc-per-node=$MACHINE_GPU_COUNT train.py \
+--class_type $CLASS_TYPE \
+--model_path $MODEL_PATH \
+--max_input_length $MAX_INPUT_LENGTH \
+--per_device_train_batch_size $PER_DEVICE_TRAIN_BATCH_SIZE \
+--gradient_accumulation_steps $GRAD_ACCUM \
+--use_grad_ckpt \
+--fsdp "full_shard auto_wrap offload" \
+--fsdp_config fsdp_configs/fsdp.json
 ```
 
 

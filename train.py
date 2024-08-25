@@ -140,10 +140,15 @@ class Collator:
         return default_data_collator(output_dict)
 
 def get_hf_train_arguments(args):
-    if 'zero3' in args.ds_config: zero_suffix = 'zero3'
-    elif 'zero2' in args.ds_config: zero_suffix = 'zero2'
-    elif 'zero1' in args.ds_config: zero_suffix = 'zero1'
-    else: raise NotImplementedError
+    if args.ds_config is not None:
+        if 'zero3' in args.ds_config: dist_suffix = 'zero3'
+        elif 'zero2' in args.ds_config: dist_suffix = 'zero2'
+        elif 'zero1' in args.ds_config: dist_suffix = 'zero1'
+        else: raise NotImplementedError
+    elif args.fsdp_config is not None:
+        dist_suffix = 'fsdp'
+    else:
+        raise NotImplementedError
 
     return TrainingArguments(
         ## optimizer setting
@@ -159,7 +164,8 @@ def get_hf_train_arguments(args):
         warmup_ratio=0.02,
 
         ## distributed setting
-        deepspeed=args.ds_config,
+        deepspeed=args.ds_config if args.ds_config is not None else None,
+        fsdp_config=args.fsdp_config if args.fsdp_config is not None else None,
         gradient_checkpointing=False,
         bf16=True if args.dtype == "bf16" else False,
         fp16=True if args.dtype == "fp16" else False,
@@ -168,10 +174,10 @@ def get_hf_train_arguments(args):
         ## logging, eval and save logic
         output_dir=os.path.join(
             args.output_dir,
-            "class_{}_dtype_{}_zero_{}_gradckpt_{}_bsz_{}_seqlen_{}_accum_{}".format(
+            "class_{}_dtype_{}_dist_{}_gradckpt_{}_bsz_{}_seqlen_{}_accum_{}".format(
                 args.class_type,
                 args.dtype,
-                zero_suffix,
+                dist_suffix,
                 args.use_grad_ckpt,
                 args.per_device_train_batch_size,
                 args.max_input_length,
@@ -211,7 +217,8 @@ if __name__ == "__main__":
     parser.add_argument('--dtype', type=str, default='bf16', choices=['fp16', 'bf16'])
     parser.add_argument("--model_path", type=str, default=None)
 
-    parser.add_argument("--ds_config", type=str, default="ds_configs/ds_config_zero3_bf16.json")
+    parser.add_argument("--fsdp_config", type=str, default=None)
+    parser.add_argument("--ds_config", type=str, default=None)
     parser.add_argument("--use_grad_ckpt", action='store_true')
 
     parser.add_argument("--per_device_train_batch_size", type=int, default=1)
