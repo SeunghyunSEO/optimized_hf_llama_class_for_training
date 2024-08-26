@@ -360,7 +360,7 @@ torchrun --nnodes=$WORLD_SIZE --nproc-per-node=$MACHINE_GPU_COUNT train.py \
 --gradient_accumulation_steps $GRAD_ACCUM \
 --use_grad_ckpt \
 --fsdp_config $FSDP_CONFIG \
---fsdp_option $FSDP_OPTION
+--fsdp_option "$FSDP_OPTION"
 ```
 
 
