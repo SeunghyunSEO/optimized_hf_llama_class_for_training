@@ -368,6 +368,15 @@ torchrun --nnodes=$WORLD_SIZE --nproc-per-node=$MACHINE_GPU_COUNT train.py \
 purple dot (FSDP+offload) looks slow.
 
 
+### 2 node test
+
+![2node_test](./assets/images/2node_test.png)
+
+- 480 samples / 16 gpus = 15 iters
+- zero-3
+- fused ce kernel comparision
+
+
 # References
 
 - [Reference model class from (huggingface/transformers)](https://github.com/huggingface/transformers/blob/v4.39-release/src/transformers/models/llama/modeling_llama.py)
