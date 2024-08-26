@@ -363,6 +363,10 @@ torchrun --nnodes=$WORLD_SIZE --nproc-per-node=$MACHINE_GPU_COUNT train.py \
 --fsdp_option "$FSDP_OPTION"
 ```
 
+![fsdp_test](./assets/images/fsdp_test.png)
+
+[purple dot (FSDP+offload)](fsdp_test) looks slow.
+
 
 # References
 
