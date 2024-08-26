@@ -228,7 +228,7 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
 
-class OptimizedLlamaAttention(nn.Module):
+class LlamaAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
     def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
@@ -370,12 +370,12 @@ class OptimizedLlamaAttention(nn.Module):
         return attn_output, None, None
 
 
-class OptimizedLlamaDecoderLayer(nn.Module):
+class LlamaDecoderLayer(nn.Module):
     def __init__(self, config: LlamaConfig, layer_idx: int):
         super().__init__()
         self.hidden_size = config.hidden_size
 
-        self.self_attn = OptimizedLlamaAttention(config=config, layer_idx=layer_idx)
+        self.self_attn = LlamaAttention(config=config, layer_idx=layer_idx)
 
         self.mlp = LlamaMLP(config)
         if USE_BASELINE['layernorm']:
@@ -424,7 +424,7 @@ class OptimizedLlamaDecoderLayer(nn.Module):
         return outputs
 
 
-class OptimizedLlamaPreTrainedModel(PreTrainedModel):
+class LlamaPreTrainedModel(PreTrainedModel):
     config_class = LlamaConfig
     base_model_prefix = "model"
     supports_gradient_checkpointing = True
@@ -462,7 +462,7 @@ class OptimizedLlamaPreTrainedModel(PreTrainedModel):
             layer.self_attn.past_key_value = None
 
 
-class OptimizedLlamaModel(OptimizedLlamaPreTrainedModel):
+class LlamaModel(LlamaPreTrainedModel):
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
         self.padding_idx = config.pad_token_id
@@ -470,7 +470,7 @@ class OptimizedLlamaModel(OptimizedLlamaPreTrainedModel):
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
         self.layers = nn.ModuleList(
-            [OptimizedLlamaDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
+            [LlamaDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
         if USE_BASELINE['layernorm']:
             self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
@@ -657,12 +657,12 @@ class OptimizedLlamaModel(OptimizedLlamaPreTrainedModel):
         raise NotImplementedError("This model class supports only autoregressive training")
 
 
-class OptimizedLlamaForCausalLM(OptimizedLlamaPreTrainedModel):
+class LlamaForCausalLM(LlamaPreTrainedModel):
     _tied_weights_keys = ["lm_head.weight"]
 
     def __init__(self, config):
         super().__init__(config)
-        self.model = OptimizedLlamaModel(config)
+        self.model = LlamaModel(config)
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
@@ -727,7 +727,7 @@ class OptimizedLlamaForCausalLM(OptimizedLlamaPreTrainedModel):
         )
 
         hidden_states = outputs[0]
-        print(f'hidden_states.size(): {hidden_states.size()}')
+        # print(f'hidden_states.size(): {hidden_states.size()}')
         if self.config.pretraining_tp > 1:
             raise NotImplementedError
         

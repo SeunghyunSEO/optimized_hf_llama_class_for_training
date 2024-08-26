@@ -338,11 +338,19 @@ MACHINE_RANK=?
 
 ```bash
 MODEL_PATH="meta-llama/Meta-Llama-3-8B"
+
 CLASS_TYPE="custom_optimized"
 # CLASS_TYPE="liger"
+
 MAX_INPUT_LENGTH=8192
 PER_DEVICE_TRAIN_BATCH_SIZE=1
 GRAD_ACCUM=2
+
+# FSDP_OPTION="full_shard auto_wrap" # zero3 no offload
+# FSDP_CONFIG="fsdp_configs/fsdp.json"
+
+FSDP_OPTION="full_shard auto_wrap offload" # zero3 cpu offload
+FSDP_CONFIG="fsdp_configs/fsdp.json"
 
 torchrun --nnodes=$WORLD_SIZE --nproc-per-node=$MACHINE_GPU_COUNT train.py \
 --class_type $CLASS_TYPE \
@@ -351,8 +359,8 @@ torchrun --nnodes=$WORLD_SIZE --nproc-per-node=$MACHINE_GPU_COUNT train.py \
 --per_device_train_batch_size $PER_DEVICE_TRAIN_BATCH_SIZE \
 --gradient_accumulation_steps $GRAD_ACCUM \
 --use_grad_ckpt \
---fsdp "full_shard auto_wrap offload" \
---fsdp_config fsdp_configs/fsdp.json
+--fsdp_config $FSDP_CONFIG \
+--fsdp_option $FSDP_OPTION
 ```
 
 

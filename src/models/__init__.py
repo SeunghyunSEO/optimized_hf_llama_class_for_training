@@ -1,2 +1,1 @@
-from .modeling_llama import LlamaForCausalLM
-from .optimized_modeling_llama import OptimizedLlamaForCausalLM
+from .optimized_modeling_llama import LlamaForCausalLM

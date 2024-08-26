@@ -7,7 +7,7 @@ import torch
 
 from transformers import TrainingArguments
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
-from src.models.optimized_modeling_llama import OptimizedLlamaForCausalLM
+from src.models.optimized_modeling_llama import LlamaForCausalLM
 
 from transformers import Trainer
 # from trl import SFTTrainer as Trainer
@@ -30,7 +30,7 @@ def _reset_seeds(seed_val: int = 42):
     torch.cuda.manual_seed_all(seed_val)
 
 def get_model_and_tokenizer(args: argparse.Namespace):
-    model_class = OptimizedLlamaForCausalLM if args.class_type == 'custom_optimized' else AutoModelForCausalLM
+    model_class = LlamaForCausalLM if args.class_type == 'custom_optimized' else AutoModelForCausalLM
     assert args.dtype == 'bf16'
     torch_dtype = DTYPE_SET[args.dtype]
 
@@ -68,7 +68,7 @@ def get_model_and_tokenizer(args: argparse.Namespace):
             }
             apply_liger_kernel_to_llama(**liger_args)
 
-    if args.use_grad_ckpt:
+    if args.use_grad_ckpt and args.fsdp_config is not None:
         model.gradient_checkpointing_enable()
         
     tokenizer = AutoTokenizer.from_pretrained(args.model_path)
@@ -145,8 +145,12 @@ def get_hf_train_arguments(args):
         elif 'zero2' in args.ds_config: dist_suffix = 'zero2'
         elif 'zero1' in args.ds_config: dist_suffix = 'zero1'
         else: raise NotImplementedError
+        fsdp_option = None
     elif args.fsdp_config is not None:
-        dist_suffix = 'fsdp'
+        dist_suffix = "fsdp"
+        fsdp_option = args.fsdp_option
+        print(fsdp_option)
+        # https://github.com/huggingface/accelerate/blob/v0.33.0-release/src/accelerate/accelerator.py#L1512-L1566
     else:
         raise NotImplementedError
 
@@ -166,6 +170,7 @@ def get_hf_train_arguments(args):
         ## distributed setting
         deepspeed=args.ds_config if args.ds_config is not None else None,
         fsdp_config=args.fsdp_config if args.fsdp_config is not None else None,
+        fsdp=fsdp_option,
         gradient_checkpointing=False,
         bf16=True if args.dtype == "bf16" else False,
         fp16=True if args.dtype == "fp16" else False,
@@ -197,6 +202,7 @@ def main(args: argparse.Namespace):
     _reset_seeds(args.seed)
     training_kwargs = get_hf_train_arguments(args) # for dist.init and zero-3, you should set TrainingArguments first
     model, tokenizer = get_model_and_tokenizer(args)
+    # Tra() # model.model.gradient_checkpinting
     train_dataset = get_sft_dataset(tokenizer, args.num_train_samples)
     trainer_kwargs = {
         "args": training_kwargs,
@@ -218,6 +224,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", type=str, default=None)
 
     parser.add_argument("--fsdp_config", type=str, default=None)
+    parser.add_argument("--fsdp_option", type=str, default=None)
     parser.add_argument("--ds_config", type=str, default=None)
     parser.add_argument("--use_grad_ckpt", action='store_true')
 

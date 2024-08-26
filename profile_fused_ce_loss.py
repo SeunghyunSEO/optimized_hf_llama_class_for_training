@@ -11,8 +11,7 @@ from accelerate import Accelerator
 from accelerate.utils import InitProcessGroupKwargs
 
 from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM
-from src.models.modeling_llama import LlamaForCausalLM
-from src.models.optimized_modeling_llama import OptimizedLlamaForCausalLM
+from src.models.optimized_modeling_llama import LlamaForCausalLM
 
 from src.utils import ContextManagers, get_torch_profiler
 
@@ -42,7 +41,7 @@ def get_model(
     num_checkpoints: int = 1,
 ):
     torch_dtype = DTYPE_SET[dtype]
-    model_class = OptimizedLlamaForCausalLM if class_type == 'custom_optimized' else AutoModelForCausalLM
+    model_class = LlamaForCausalLM if class_type == 'custom_optimized' else AutoModelForCausalLM
     config = AutoConfig.from_pretrained(model_path)
 
     if class_type != 'unsloth':
