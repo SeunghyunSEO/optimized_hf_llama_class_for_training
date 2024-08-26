@@ -145,11 +145,12 @@ def get_hf_train_arguments(args):
         elif 'zero2' in args.ds_config: dist_suffix = 'zero2'
         elif 'zero1' in args.ds_config: dist_suffix = 'zero1'
         else: raise NotImplementedError
-        fsdp_option = None
+        fsdp_option = args.fsdp_option
+        assert fsdp_option == ""
     elif args.fsdp_config is not None:
         dist_suffix = "fsdp"
         fsdp_option = args.fsdp_option
-        print(fsdp_option)
+        assert fsdp_option != ""
         # https://github.com/huggingface/accelerate/blob/v0.33.0-release/src/accelerate/accelerator.py#L1512-L1566
     else:
         raise NotImplementedError
@@ -224,7 +225,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", type=str, default=None)
 
     parser.add_argument("--fsdp_config", type=str, default=None)
-    parser.add_argument("--fsdp_option", type=str, default=None)
+    parser.add_argument("--fsdp_option", type=str, default="")
     parser.add_argument("--ds_config", type=str, default=None)
     parser.add_argument("--use_grad_ckpt", action='store_true')
 
