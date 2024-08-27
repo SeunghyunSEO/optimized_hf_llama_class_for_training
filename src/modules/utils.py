@@ -1,3 +1,7 @@
+'''
+copied from https://github.com/unslothai/unsloth/blob/main/unsloth/kernels/utils.py
+'''
+
 # Copyright 2023-present Daniel Han-Chen & the Unsloth team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

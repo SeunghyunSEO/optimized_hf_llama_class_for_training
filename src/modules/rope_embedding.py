@@ -1,7 +1,6 @@
 '''
 Copied from https://github.com/unslothai/unsloth
 '''
-
 # Copyright 2023-present Daniel Han-Chen & the Unsloth team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,10 +19,6 @@ import triton
 import triton.language as tl
 import torch
 from .utils import calculate_settings
-
-from pdb import set_trace as Tra
-
-
 ROPE_GROUP_SIZE = 4
 
 @triton.heuristics({"BACKWARD_PASS": lambda args: args["BACKWARD_PASS"],})
@@ -82,13 +77,11 @@ pass
 class Fast_RoPE_Embedding(torch.autograd.Function):
     @staticmethod
     def forward(ctx, Q, cos, sin):
-        # Q = Q.float()
         cos, sin = cos.squeeze(), sin.squeeze()
         batch, seq_len, n_heads, head_dim = Q.shape
-        # Tra()
-        
         Q = Q.view(batch*seq_len, n_heads*head_dim)
         n_rows, n_cols = Q.shape
+
         assert(seq_len <= cos.shape[0])
 
         # [TODO] Changing blocksize to head_dim//2 seems to have
@@ -114,8 +107,6 @@ class Fast_RoPE_Embedding(torch.autograd.Function):
         ctx.n_groups = n_groups
         ctx.cos = cos
         ctx.sin = sin
-        # Tra()
-        
         return Q.view(batch, seq_len, n_heads, head_dim)
     pass
 

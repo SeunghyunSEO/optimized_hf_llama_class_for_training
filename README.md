@@ -15,6 +15,26 @@ Recently, bunch of awesome optimization techniques or kernels for training Large
 This project provides monkey patched llama class for the appetizer of LLMs with larger vocab and long context inputs. 
 (i dont cover Parameter Efficient Fine-Tuning (PEFT) methods such as QLoRA or 4-bit quantized training)
 
+## Finetuning Llama-3.1 8B with 128K length input in single GPU setting (not single node)
+
+If you are lazy enough not to implement Tensor Parallelism (TP), Context Parallelism (CP) (distributed attention) but want to train model with 128k length, 
+then cpu offloading and fused xent is all you need.
+you can finetune llama 3.1 8B with 1 bsz * 128k length input with hf in `single gpu` (not node).
+but don't ask me `Machine FLOPs Utilization (MFU)` because it's not scalable method.
+if you want to post-train with long context, TP, CP and Pipeline Parallelism (PP) is inevitable.
+
+- 1x 80GB A100
+- `[1, 131072]` input
+- optimization
+  - fused rope 
+  - fused layernorm
+  - fused CE
+  - activation checkpointing with cpu offload
+
+![131072_input_llama3_1_8b](./assets/images/131072_input_llama3_1_8b.png)
+
+
+# Key Features
 
 ## 1. Efficient SDPA
 
@@ -107,7 +127,6 @@ cd /path/to/dir && pip install -r requirements
 ## Sanity Check
 
 ```bash
-# pip install -r requirements.txt
 python test_fused_ce_loss.py
 ```
 
@@ -191,6 +210,43 @@ weight_grad_ : tensor([[ 0.0033, -0.0006, -0.0019,  ..., -0.0022, -0.0033, -0.00
         [ 0.0066, -0.0066, -0.0029,  ...,  0.0062,  0.0068, -0.0077]],
        device='cuda:0', dtype=torch.bfloat16)
 torch.allclose(weight_grad, weight_grad_, rtol=rtol, atol=atol): True
+```
+
+</details>
+
+```bash
+python test_tiny_llama.py
+```
+
+<details>
+
+```python
+< loss >
+vanilla_model_outputs[0]   : 4.898138523101806640625000000000000000000000000000000000000000
+optimized_model_outputs[0] : 4.906250000000000000000000000000000000000000000000000000000000
+allclose : False
+
+model.embed_tokens.weight: False
+model.layers.0.self_attn.q_proj.weight: False
+model.layers.0.self_attn.k_proj.weight: False
+model.layers.0.self_attn.v_proj.weight: False
+model.layers.0.self_attn.o_proj.weight: False
+model.layers.0.mlp.gate_proj.weight: False
+model.layers.0.mlp.up_proj.weight: False
+model.layers.0.mlp.down_proj.weight: False
+model.layers.0.input_layernorm.weight: False
+model.layers.0.post_attention_layernorm.weight: False
+model.layers.1.self_attn.q_proj.weight: False
+model.layers.1.self_attn.k_proj.weight: False
+model.layers.1.self_attn.v_proj.weight: False
+model.layers.1.self_attn.o_proj.weight: False
+model.layers.1.mlp.gate_proj.weight: False
+model.layers.1.mlp.up_proj.weight: False
+model.layers.1.mlp.down_proj.weight: False
+model.layers.1.input_layernorm.weight: False
+model.layers.1.post_attention_layernorm.weight: False
+model.norm.weight: False
+lm_head.weight: False
 ```
 
 </details>

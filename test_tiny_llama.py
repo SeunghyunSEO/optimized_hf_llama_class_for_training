@@ -4,7 +4,7 @@ import torch
 
 from transformers import LlamaConfig, AutoTokenizer
 from src.models.modeling_llama import LlamaForCausalLM
-from src.models.optimized_modeling_llama import OptimizedLlamaForCausalLM
+from src.models.optimized_modeling_llama import LlamaForCausalLM as OptimizedLlamaForCausalLM
 
 from pdb import set_trace as Tra
 
@@ -68,7 +68,7 @@ dtype = torch.bfloat16
 
 seed = 1234
 batch_size = 2
-seq_len = 155
+seq_len = 355
 
 vocab_size = 128
 hidden_size = 256

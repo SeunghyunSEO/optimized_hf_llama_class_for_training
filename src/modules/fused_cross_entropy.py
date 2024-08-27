@@ -13,6 +13,8 @@ import triton.language as tl
 
 from pdb import set_trace as Tra
 
+MAX_CHUNK_SIZE=4096
+
 
 @triton.jit
 def fused_cross_entropy_fwd_bwd_kernel(
@@ -121,8 +123,9 @@ class FusedCrossEntropyLossFunction(torch.autograd.Function):
         # Divide the input into chunks of size num_tokens // n_loop_iters, then compute the loss for each of these groups
         proj_weight_cast = proj_weight.to(dtype)
 
-        loop_chunk_size = triton.cdiv(n_tokens, n_loop_iters)
+        loop_chunk_size = min(triton.cdiv(n_tokens, n_loop_iters), MAX_CHUNK_SIZE)
         logits_chunk_cast = torch.zeros((loop_chunk_size, n_classes), dtype=dtype, device=in_feat.device)
+
         for i, in_feat_chunk in enumerate(torch.split(in_feat, loop_chunk_size)):
             token_start_idx = i * loop_chunk_size
             token_end_idx = (i + 1) * loop_chunk_size
@@ -135,6 +138,7 @@ class FusedCrossEntropyLossFunction(torch.autograd.Function):
             torch.matmul(in_feat_chunk, proj_weight_cast.T, out=logits_chunk_cast)
 
             logits_chunk = logits_chunk_cast.float()
+            # print(f'logits_chunk.size(): {logits_chunk.size()}')
 
             ## Compute loss
             loss_chunk = loss[token_start_idx:token_end_idx]
