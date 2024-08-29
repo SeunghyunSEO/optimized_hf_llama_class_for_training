@@ -29,6 +29,7 @@ if you want to post-train with long context, TP, CP and Pipeline Parallelism (PP
   - fused rope 
   - fused layernorm
   - fused CE
+  - fused attention (memory efficient attention, flash attention)
   - activation checkpointing with cpu offload
 
 ![131072_input_llama3_1_8b](./assets/images/131072_input_llama3_1_8b.png)
